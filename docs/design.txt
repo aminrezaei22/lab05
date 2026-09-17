@@ -1,7 +1,7 @@
 === PHASE 3: DESIGN THE RECORD ===
 STRUCT:             Student
 MODELS:             One student's full name and their corresponding assignment scores.
-LIVES IN:           include/grading.hpp 
+LIVES IN:           include/grading.cpp
 FIXED DIMENSION:    Number of assignments, because every student takes the same fixed set of assignments.
 VARYING DIMENSION:  Number of students on the roster, passed as a runtime count alongside the collection pointer.
 
