@@ -5,57 +5,65 @@
 
 #include "utilities.h"
 
-double student_average(const double* const* scores, int student_index, const int num_assignments) {
+double student_average(const Student& student) {
     double total{};
 
     // Total the assignment scores for this student
-    for (auto i{0}; i < num_assignments; i++) {
-        total += scores[student_index][i];
+    for (auto i{0}; i < assignment_count; i++) {
+        total += student.scores[i];
     }
 
-    return total / num_assignments;
+    return total / assignment_count;
 }
 
-double assignment_average(const double* const* scores, int assignment_index, const int num_students, const int num_assignments) {
-    double total{};
-
-    // Total this assignment's score down every student row
-    for (auto i{0}; i < num_students; i++) {
-        total += scores[i][assignment_index];
+double assignment_average(const Student* students, int student_count, int assignment_index) {
+    if (student_count == 0) {
+        return 0.0;
     }
 
-    return total / num_students;
-}
-
-double class_average(const double* const* scores, const int num_students, const int num_assignments) {
     double total{};
 
-    for (auto i{0}; i < num_students; i++) {
-        for (auto j{0}; j < num_assignments; j++) {
-            total += scores[i][j];
+    // Total this assignment's score across every student
+    for (auto i{0}; i < student_count; i++) {
+        total += students[i].scores[assignment_index];
+    }
+
+    return total / student_count;
+}
+
+double class_average(const Student* students, int student_count) {
+    if (student_count == 0) {
+        return 0.0;
+    }
+
+    double total{};
+
+    for (auto i{0}; i < student_count; i++) {
+        for (auto j{0}; j < assignment_count; j++) {
+            total += students[i].scores[j];
         }
     }
 
-    return total / (num_students * num_assignments);
+    return total / (student_count * assignment_count);
 }
 
-void find_extremes(const double* const* scores, int student_index, const int num_students, const int num_assignments, double& lowest, double& highest){
+void find_extremes(const Student& student, double& lowest, double& highest) {
     // Start from a real score so the result is correct for any range of
     // values, including all-negative ones
-    lowest = scores[student_index][0];
-    highest = scores[student_index][0];
+    lowest = student.scores[0];
+    highest = student.scores[0];
 
-    for (auto i{1}; i < num_assignments; i++) {
-        lowest = std::min(lowest, scores[student_index][i]);
-        highest = std::max(highest, scores[student_index][i]);
+    for (auto i{1}; i < assignment_count; i++) {
+        lowest = std::min(lowest, student.scores[i]);
+        highest = std::max(highest, student.scores[i]);
     }
 }
 
-int count_grade(const double* const* scores, char target, const int num_students, const int num_assignments) {
+int count_grade(const Student* students, int student_count, char target) {
     int count{};
 
-    for (auto i{0}; i < num_students; i++) {
-        if (letter_grade(student_average(scores, i, num_assignments)) == target) {
+    for (auto i{0}; i < student_count; i++) {
+        if (letter_grade(student_average(students[i])) == target) {
             count++;
         }
     }
@@ -63,9 +71,9 @@ int count_grade(const double* const* scores, char target, const int num_students
     return count;
 }
 
-bool has_perfect_score(const double* const* scores, int student_index, const int num_students, const int num_assignments) {
-    for (auto i{0}; i < num_assignments; i++) {
-        if (scores[student_index][i] >= 100.0) {
+bool has_perfect_score(const Student& student) {
+    for (auto i{0}; i < assignment_count; i++) {
+        if (student.scores[i] >= 100.0) {
             return true;
         }
     }
@@ -73,13 +81,13 @@ bool has_perfect_score(const double* const* scores, int student_index, const int
     return false;
 }
 
-bool is_at_risk(const double* const* scores, int student_index, const int num_students, const int num_assignments) {
-    if (student_average(scores, student_index, num_students) < 70.0) {
+bool is_at_risk(const Student& student) {
+    if (student_average(student) < 70.0) {
         return true;
     }
 
-    for (auto i{0}; i < num_assignments; i++) {
-        if (scores[student_index][i] < 50.0) {
+    for (auto i{0}; i < assignment_count; i++) {
+        if (student.scores[i] < 50.0) {
             return true;
         }
     }
