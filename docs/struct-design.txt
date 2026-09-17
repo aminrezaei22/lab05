@@ -1,6 +1,6 @@
 STRUCT:             Student
 MODELS:             One student's full name and their corresponding assignment scores.
-LIVES IN:           include/... (choose your header)
+LIVES IN:           include/main.cpp
 FIXED DIMENSION:    Number of assignments, because every student takes the same fixed set of assignments.
 VARYING DIMENSION:  Number of students on the roster, passed as a runtime count alongside the collection pointer.
 
@@ -10,8 +10,7 @@ FIELDS:
 
 COLLECTION PASSED AS: const Student students[], int student_count
 
-========================================================================================================================================================================================================================================================================================
-
+===========================================================================================================================
 FUNCTION:           print_student_names
 MODULE:             src/printing.cpp
 OLD:                void print_student_names(const std::string names[], int count)
