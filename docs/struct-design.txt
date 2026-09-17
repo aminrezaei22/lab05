@@ -1,0 +1,14 @@
+STRUCT:             Student
+MODELS:             One student's full name and their corresponding assignment scores.
+LIVES IN:           include/... (choose your header)
+FIXED DIMENSION:    Number of assignments, because every student takes the same fixed set of assignments.
+VARYING DIMENSION:  Number of students on the roster, passed as a runtime count alongside the collection pointer.
+
+FIELDS:
+  - std::string name;
+  - double scores[ASSIGNMENT_COUNT]; (or whatever constant/size your project uses)
+
+COLLECTION PASSED AS: const Student students[], int student_count
+
+========================================================================================================================================================================================================================================================================================
+
