@@ -1,337 +1,109 @@
-LAB 05 — DESIGNING THE RECORD
-=============================
-Four artifacts: (1) inventory + struct decision, (2) signature table,
-(3) conversion order, (4) contract-change notes.
-No .h or .cpp file was modified today. Baseline output: docs/baseline-output.txt
-
+LAB 05 DESIGN
 
 === PHASE 2: INVENTORY ===
+grading:  student_average, find_extremes, has_perfect_score, is_at_risk   (one student)
+          assignment_average, class_average, count_grade                  (whole roster)
+printing: print_student_row                                               (one student, name + scores)
+          print_histogram, print_assignment_summary, print_roster         (whole roster)
 
-Current shape: names is `const std::string names[]` in app/main.cpp;
-scores is a jagged grid `double** scores` (num_students rows x
-num_assignments columns). Student i is names[i] + scores[i][...] — nothing
-but discipline keeps them together.
-
-FUNCTION                   MODULE     USES          SCOPE
--------------------------  ---------  ------------  ------------------------
-student_average            grading    scores        one student (by index)
-assignment_average         grading    scores        whole roster
-class_average              grading    scores        whole roster
-find_extremes              grading    scores        one student (by index)
-count_grade                grading    scores        whole roster
-has_perfect_score          grading    scores        one student (by index)
-is_at_risk                 grading    scores        one student (by index)
-print_student_row          printing   name + scores one student (by index)
-print_histogram            printing   scores        whole roster
-print_assignment_summary   printing   scores        whole roster
-print_roster               printing   names         whole roster
-
-AFFECTED FUNCTIONS: 11  (7 in grading, 4 in printing)
-Also affected:
-  - print_header (printing): takes num_students/num_assignments but touches
-    neither collection. Its parameters go away (see signature table).
-  - app/main.cpp: builds both collections, frees the grid, and passes them
-    to every call above.
-  - tests/grading_tests.cpp: all 5 tests build a ScoreMatrix fixture
-    → all 5 stop compiling.
-
-JOINTS IN MAIN (the two collections indexed by the same variable):
-  - case 1: print_student_row(names[row], scores, row, ...)
-    names[row] and scores (row `row`) are matched only by the shared `row`.
-  - scores[0]..scores[5] are filled by hand in the same order as names[]
-    (the row numbers are hardcoded).
-  - case 0: delete[] scores[student] loop (goes away entirely — no heap).
-
-SIZE OF THURSDAY: 11 functions + print_header + main + 5 tests.
+Affected functions: 11
+Also: main (case 1 uses names[row] and scores with the same row) and all 5 tests.
 
 
-=== ARTIFACT 1 — PHASE 3: THE RECORD ===
-
+=== 1. STRUCT ===
 STRUCT:             Student
-MODELS:             One student: their full name and their score on each
-                    assignment in the course.
-LIVES IN:           include/student.h (new header)
-                    Why: grading, printing, main, and the tests all need to
-                    see Student. If it lived in grading.h, printing and main
-                    would depend on the grading module just to know what a
-                    student is. A small header with no dependencies of its own
-                    (just <string>) can be included by everyone.
-FIXED DIMENSION:    Number of assignments — constexpr int assignment_count{5};
-                    defined in student.h. Every student takes the same
-                    assignments, and it is a fact about the course, so it
-                    belongs in the type as a fixed-size array.
-VARYING DIMENSION:  Number of students on the roster. It changes between
-                    classes (and tests need 0, 1, 2... students), so it is a
-                    runtime int student_count that travels next to the
-                    pointer to the first Student.
+MODELS:             One student's name and their assignment scores.
+LIVES IN:           include/student.h - grading, printing, main, and tests all need it.
+FIXED DIMENSION:    Number of assignments - every student has the same assignments.
+VARYING DIMENSION:  Number of students - passed as student_count with the array.
 
 FIELDS:
   - std::string name;
-  - double scores[assignment_count]{};
+  - double scores[assignment_count];     // constexpr int assignment_count{5};
 
-NOT FIELDS: average, letter grade, index/row number — those are computed or
-describe what the program is doing, not the student.
-
-COLLECTION PASSED AS:   const Student* students, int student_count
-ONE STUDENT PASSED AS:  const Student& student
-
-Sketch (for Thursday — not written yet):
-    // include/student.h
-    #ifndef STUDENT_H
-    #define STUDENT_H
-    #include <string>
-    constexpr int assignment_count{5};
-    struct Student {
-        std::string name;
-        double scores[assignment_count]{};
-    };
-    #endif
+COLLECTION PASSED AS: const Student* students, int student_count
 
 
-=== ARTIFACT 2 — PHASE 4: SIGNATURE TABLE ===
+=== 2. SIGNATURE TABLE ===
+(pointer + count = walks the whole roster;  const Student& = reads one student)
 
-Legend:  [SAME PROMISE]  parameters change, what it returns/does does not
-         [CONTRACT]      the contract itself changes
-         [NARROWED]      was roster + index, now takes one Student
+student_average (grading)
+  OLD: double student_average(const double* const* scores, int student_index, int num_assignments)
+  NEW: double student_average(const Student& student)
+  CONTRACT CHANGES: no index needed anymore
 
-FUNCTION:           student_average
-MODULE:             grading
-OLD:                double student_average(const double* const* scores, const int student_index, const int num_assignments)
-NEW:                double student_average(const Student& student)
-PARAMETER REASONS:  student — const reference: reads one record, no copy of
-                    the string, cannot modify it. Assignment count comes from
-                    assignment_count, so it is no longer a parameter.
-CONTRACT CHANGES:   [NARROWED] [CONTRACT] "student_index in range" precondition
-                    is gone — there is no index to get wrong. Still returns
-                    that student's mean.
+assignment_average (grading)
+  OLD: double assignment_average(const double* const* scores, int assignment_index, int num_students, int num_assignments)
+  NEW: double assignment_average(const Student* students, int student_count, int assignment_index)
+  CONTRACT CHANGES: empty roster returns 0.0
 
----
-FUNCTION:           assignment_average
-MODULE:             grading
-OLD:                double assignment_average(const double* const* scores, int assignment_index, const int num_students, const int num_assignments)
-NEW:                double assignment_average(const Student* students, int student_count, int assignment_index)
-PARAMETER REASONS:  students + student_count — walks the whole roster, so it
-                    needs the pointer and how far it may walk.
-                    assignment_index — which column to average; by value.
-CONTRACT CHANGES:   [CONTRACT] Pre: assignment_index in [0, assignment_count).
-                    Pre: student_count >= 0. New: student_count == 0 used to
-                    be impossible (fixed roster); now it returns 0.0 instead
-                    of dividing by zero.
+class_average (grading)
+  OLD: double class_average(const double* const* scores, int num_students, int num_assignments)
+  NEW: double class_average(const Student* students, int student_count)
+  CONTRACT CHANGES: empty roster returns 0.0
 
----
-FUNCTION:           class_average
-MODULE:             grading
-OLD:                double class_average(const double* const* scores, const int num_students, const int num_assignments)
-NEW:                double class_average(const Student* students, int student_count)
-PARAMETER REASONS:  whole roster → pointer + count.
-CONTRACT CHANGES:   [CONTRACT] Empty roster (student_count == 0) returns 0.0.
-                    (Decision: an empty class has no scores, and 0.0 keeps the
-                    menu printable; the alternative was a precondition
-                    student_count > 0. We chose 0.0 so it can be tested.)
+find_extremes (grading)
+  OLD: void find_extremes(const double* const* scores, int student_index, int num_students, int num_assignments, double& lowest, double& highest)
+  NEW: void find_extremes(const Student& student, double& lowest, double& highest)
+  CONTRACT CHANGES: no index needed anymore
 
----
-FUNCTION:           find_extremes
-MODULE:             grading
-OLD:                void find_extremes(const double* const* scores, int student_index, const int num_students, const int num_assignments, double& lowest, double& highest)
-NEW:                void find_extremes(const Student& student, double& lowest, double& highest)
-PARAMETER REASONS:  student — const reference, one record.
-                    lowest/highest — non-const references: out-parameters.
-CONTRACT CHANGES:   [NARROWED] index precondition removed; otherwise
-                    [SAME PROMISE].
+count_grade (grading)
+  OLD: int count_grade(const double* const* scores, char target, int num_students, int num_assignments)
+  NEW: int count_grade(const Student* students, int student_count, char target)
+  CONTRACT CHANGES: none
 
----
-FUNCTION:           count_grade
-MODULE:             grading
-OLD:                int count_grade(const double* const* scores, char target, const int num_students, const int num_assignments)
-NEW:                int count_grade(const Student* students, int student_count, char target)
-PARAMETER REASONS:  whole roster → pointer + count; target by value (char).
-                    Pointer + count kept together at the front, same order as
-                    every other roster function.
-CONTRACT CHANGES:   [SAME PROMISE] Empty roster naturally returns 0.
+has_perfect_score (grading)
+  OLD: bool has_perfect_score(const double* const* scores, int student_index, int num_students, int num_assignments)
+  NEW: bool has_perfect_score(const Student& student)
+  CONTRACT CHANGES: no index needed anymore
 
----
-FUNCTION:           has_perfect_score
-MODULE:             grading
-OLD:                bool has_perfect_score(const double* const* scores, int student_index, const int num_students, const int num_assignments)
-NEW:                bool has_perfect_score(const Student& student)
-PARAMETER REASONS:  one record → const reference.
-CONTRACT CHANGES:   [NARROWED] index precondition removed; otherwise
-                    [SAME PROMISE].
+is_at_risk (grading)
+  OLD: bool is_at_risk(const double* const* scores, int student_index, int num_students, int num_assignments)
+  NEW: bool is_at_risk(const Student& student)
+  CONTRACT CHANGES: no index needed anymore
 
----
-FUNCTION:           is_at_risk
-MODULE:             grading
-OLD:                bool is_at_risk(const double* const* scores, int student_index, const int num_students, const int num_assignments)
-NEW:                bool is_at_risk(const Student& student)
-PARAMETER REASONS:  one record → const reference. Calls student_average(student).
-CONTRACT CHANGES:   [NARROWED] index precondition removed; otherwise
-                    [SAME PROMISE].
-                    NOTE: the old body calls
-                    student_average(scores, student_index, num_students) —
-                    it passes the student count as the assignment count
-                    (reads past the row when students > assignments). The new
-                    signature has no count to pass, so this bug cannot survive
-                    (Grace Hopper stops being flagged at risk).
+print_student_row (printing)
+  OLD: void print_student_row(const std::string& name, const double* const* scores, int student_index, int num_students, int num_assignments)
+  NEW: void print_student_row(const Student& student)
+  CONTRACT CHANGES: no index needed anymore
 
----
-FUNCTION:           print_header
-MODULE:             printing
-OLD:                void print_header(const int num_students, const int num_assignments)
-NEW:                void print_header()
-PARAMETER REASONS:  No parameters: the name column width is name_width and the
-                    number of columns is assignment_count — both constants.
-CONTRACT CHANGES:   [SAME PROMISE] — NOTE: the old body pads with num_students
-                    instead of name_width (why the baseline header reads
-                    "STUDEN"). See "known bugs" below for how we handle it.
+print_histogram (printing)
+  OLD: void print_histogram(const double* const* scores, int num_students, int num_assignments)
+  NEW: void print_histogram(const Student* students, int student_count)
+  CONTRACT CHANGES: none
 
----
-FUNCTION:           print_student_row
-MODULE:             printing
-OLD:                void print_student_row(const std::string& name, const double* const* scores, int student_index, const int num_students, const int num_assignments)
-NEW:                void print_student_row(const Student& student)
-PARAMETER REASONS:  one record → const reference. Name and scores now arrive
-                    as one object, so they cannot be mismatched.
-CONTRACT CHANGES:   [NARROWED] index precondition removed; otherwise
-                    [SAME PROMISE]. This is the function that removes the
-                    names[row]/scores[row] joint in main.
+print_assignment_summary (printing)
+  OLD: void print_assignment_summary(const double* const* scores, int num_students, int num_assignments)
+  NEW: void print_assignment_summary(const Student* students, int student_count)
+  CONTRACT CHANGES: none
 
----
-FUNCTION:           print_histogram
-MODULE:             printing
-OLD:                void print_histogram(const double* const* scores, const int num_students, const int num_assignments)
-NEW:                void print_histogram(const Student* students, int student_count)
-PARAMETER REASONS:  whole roster → pointer + count (passes both to count_grade).
-CONTRACT CHANGES:   [SAME PROMISE]
+print_roster (printing)
+  OLD: void print_roster(const std::string* names, int name_count)
+  NEW: void print_roster(const Student* students, int student_count)
+  CONTRACT CHANGES: none
 
----
-FUNCTION:           print_assignment_summary
-MODULE:             printing
-OLD:                void print_assignment_summary(const double* const* scores, const int num_students, const int num_assignments)
-NEW:                void print_assignment_summary(const Student* students, int student_count)
-PARAMETER REASONS:  whole roster → pointer + count; loops to assignment_count.
-CONTRACT CHANGES:   [SAME PROMISE]
-
----
-FUNCTION:           print_roster
-MODULE:             printing
-OLD:                void print_roster(const std::string* names, int name_count)
-NEW:                void print_roster(const Student* students, int student_count)
-PARAMETER REASONS:  whole roster → pointer + count. Same pattern as before,
-                    only the element type changes.
-CONTRACT CHANGES:   [SAME PROMISE] Pre: students points to at least
-                    student_count records; student_count >= 0.
-
-NARROWED (Step 5 — used to take the roster + an index, now take one Student):
-    student_average, find_extremes, has_perfect_score, is_at_risk,
-    print_student_row
+Changed to take one student instead of the whole roster:
+  student_average, find_extremes, has_perfect_score, is_at_risk, print_student_row
 
 
-=== ARTIFACT 3 — PHASE 5: CONVERSION ORDER ===
+=== 3. CONVERSION ORDER ===
+Dependencies: utilities <- grading <- printing <- main
+              tests -> grading, utilities
+              everyone -> student.h
 
-DEPENDENCIES (A --> B means A includes/uses B):
+1. Add include/student.h           -> green
+2. grading.h / grading.cpp         -> red (expected)
+3. printing.h / printing.cpp       -> red (expected, main + tests not done)
+4. tests/grading_tests.cpp         -> suite green again
+5. app/main.cpp                    -> everything builds, compare to baseline-output.txt
 
-    student.h   (no dependencies)        utilities   (no dependencies)
-        ^  ^  ^  ^                            ^   ^
-        |  |  |  +---------- grading ---------+   |
-        |  |  |                 ^                  |
-        |  |  +---------- printing ---------------+
-        |  |                    ^
-        |  +------------- app/main (also uses grading)
-        +---------------- tests  (use grading + utilities)
-
-    utilities does not change at all.
-
-BUILD FACT: the `library` target compiles grading.cpp AND printing.cpp
-together, so the library does not build until both are converted.
-`cmake --build build` builds every target, so it fails until main and the
-tests are converted too.
-
-ORDER:
-  0. Add include/student.h (Student + assignment_count). Nothing uses it yet.
-     → build GREEN, suite GREEN.
-  1. grading.h / grading.cpp — all 7 functions.
-     → RED (expected): printing.cpp, main.cpp and the tests still call old
-       signatures.
-  2. printing.h / printing.cpp — all 5 functions.
-     → library builds: `cmake --build build --target library`
-       Full build still RED (expected): main + tests.
-  3. tests/grading_tests.cpp — replace ScoreMatrix with Student fixtures.
-     → `cmake --build build --target grading_tests && ctest --test-dir build`
-       SUITE GREEN again here. Full build still RED only because of main.
-  4. app/main.cpp — const Student students[]{...}; student_count from
-     std::size; remove new/delete; case 1 calls print_student_row(students[row]).
-     → FULL BUILD GREEN, SUITE GREEN.
-  5. Compare output:
-       printf "1\n2\n3\n4\n5\n0\n" | ./build/gradebook | diff - docs/baseline-output.txt
-     → must be identical EXCEPT Grace Hopper's row loses its "  !"
-       (the is_at_risk bug — see contract note 4). Any other difference
-       is a mistake.
-
-TEST DECISION: tests go third — right after the library compiles, before
-main. Converting them first would test functions that don't exist yet;
-leaving them last would mean converting main blind. Putting them at step 3
-means we have a green suite checking grading before we touch main.
-
-HOW WE KNOW RED IS EXPECTED: after steps 1–2 every error should be a
-"no matching function" / wrong-argument error in a file we have NOT converted
-yet. An error inside a file we already converted is a real mistake.
+Tests go after grading and printing so the suite is green before we change main.
 
 
-=== ARTIFACT 4 — CONTRACT-CHANGE NOTES ===
-
-1. Index preconditions removed: student_average, find_extremes,
-   has_perfect_score, is_at_risk, print_student_row no longer take an index,
-   so "student_index in [0, num_students)" no longer exists. The caller
-   picks the student with students[i]; bounds are the caller's job.
-
-2. Empty roster is now possible (student_count is a runtime value):
-   - class_average(students, 0)          → returns 0.0 (our decision)
-   - assignment_average(students, 0, i)  → returns 0.0 (same decision)
-   - count_grade(students, 0, 'A')       → returns 0
-   - print_roster / print_histogram / print_assignment_summary with 0
-     → print their headings and nothing else (no crash).
-   New tests to write Thursday: empty roster, one student, two students.
-
-3. Fixed assignment count affects the tests: the current fixtures use 1, 3
-   and 4 assignments. With assignment_count = 5 every fixture needs exactly
-   5 scores and the expected values must be recalculated.
-   DANGER: Student s{"X", {85.0}} compiles — the other 4 scores silently
-   become 0.0 and the average becomes 17.0, not 85.0. Always write all 5.
-
-4. Known bugs in the base code (found while reading, not fixed today):
-   - grading.cpp:77  is_at_risk passes num_students as num_assignments.
-     Disappears naturally with the new signature (no count parameter).
-     This DOES change the output: the old code averages 6 values for a
-     5-score student, so Grace Hopper (real avg 79.40, no score < 50) is
-     wrongly flagged "!" in the baseline. After the refactor her "!" goes
-     away. That one line is the only EXPECTED difference in step 5.
-   - printing.cpp:12 print_header pads to num_students (6) instead of
-     name_width (14) → "STUDEN" header. Plan: during the refactor keep the
-     output identical to the baseline so the diff in step 5 is clean; fix
-     it in a SEPARATE commit afterwards and regenerate the baseline.
-
-
-=== SIGN-OFF QUESTIONS ===
-
-Why is assignments fixed and students varying?
-  Every student has the same assignments — that's part of what a student
-  record is. Roster size changes by class and tests need 0/1/2 students,
-  so it must be a runtime count.
-
-Which modules see Student, and does its location follow?
-  grading, printing, main, tests. None of them should depend on another
-  module just for the type, so it gets its own header, student.h.
-
-A function that should take one student instead of the roster?
-  print_student_row — it took the name, the whole grid, an index, and both
-  counts just to print one line. Taking const Student& removes the
-  names[row]/scores[row] joint in main and makes the test fixture one student.
-
-When is the suite red and how do we know it's expected?
-  Red after steps 1 and 2; green after step 3. Expected errors are only in
-  files not converted yet.
-
-Hardest to convert?
-  The test file: every fixture has the wrong number of assignments for a
-  fixed size of 5, every expected value must be recalculated, and short
-  brace lists compile silently with zeros.
+=== 4. CONTRACT NOTES ===
+- One-student functions no longer need "student_index is in range".
+- Roster size is now a count, so it can be 0. class_average and
+  assignment_average return 0.0 for an empty roster.
+- Tests must give each student exactly 5 scores.
+- Known bug: is_at_risk passes num_students instead of num_assignments, so
+  Grace Hopper shows "!" in the baseline. After the refactor she won't.
